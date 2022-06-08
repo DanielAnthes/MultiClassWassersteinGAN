@@ -5,6 +5,8 @@ import numpy as np
 from math import ceil
 import matplotlib.pyplot as plt
 from tensorflow.python.profiler import profiler_v2 as profiler
+from os import path
+import os
 
 from load_data import load_data_by_class
 from modules import make_generator_model, make_discriminator_model
@@ -20,7 +22,7 @@ for d in tf.config.list_physical_devices():
 #%%
 
 BATCHSIZE = 32
-EPOCHS = 200
+EPOCHS = 500
 NCRIT_UPDATES = 1
 SAMPLEFREQ = 1
 GP_WEIGHT = 10.
@@ -29,6 +31,7 @@ LIPSCHITZ_CONST = 1.
 CLASSES = list(range(10))
 ALPHA=0.1
 BETA = 0.1
+NAME='multi_full_wasserstein'
 
 generators = [make_generator_model() for _ in CLASSES]
 critic = make_discriminator_model(len(CLASSES))
@@ -49,12 +52,12 @@ def wasserstein_loss_critic_multiclass(ygen, yreal, class_idx, nclasses):
     ygen_i = tf.gather(ygen, class_idx, axis=1)
     yreal_i = yreal[:, class_idx]
     loss_i = wasserstein_loss_critic(ygen_i, yreal_i)
-    # loss_not_i = ALPHA * (nclasses - 1)
+    loss_not_i = ALPHA * (nclasses - 1)
 
-    # for j in range(nclasses):
-    #     loss_not_i += tf.maximum(0., loss_i - wasserstein_loss_critic(ygen_i, tf.gather(yreal, j, axis=1)))
+    for j in range(nclasses):
+        loss_not_i += tf.maximum(0., loss_i - wasserstein_loss_critic(ygen_i, tf.gather(yreal, j, axis=1)))
     
-    return loss_i
+    # return loss_i
     return BETA * loss_i + (BETA / (nclasses-1)) * loss_not_i
 
 def wasserstein_loss_gen_multiclass(ygen, class_idx):
@@ -130,11 +133,14 @@ metrics = {
     'ct_penalty': tf.keras.metrics.Mean(name='ct_penalty')
 }
 
-train_log_dir = 'logs/gradient_tape/' + 'wgan_multi_simple' + '/train'
+train_log_dir = 'logs/gradient_tape/' + NAME + '/train'
 train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
 critic_counter = 0
 generator_counter = 0
+
+sampledir = path.join('samples_multiclass', NAME)
+os.makedirs(sampledir, exist_ok=True)
 
 for i in range(EPOCHS):
     print(f"EPOCH {i+1}/{EPOCHS}")
@@ -148,7 +154,7 @@ for i in range(EPOCHS):
             for pnum, s in enumerate(samples):
                 plt.subplot(5,1,pnum+1)
                 plt.imshow(s.squeeze())
-            fig.savefig(f"./samples_multiclass/samples_epoch_{epoch_str}_class_{c}")
+            fig.savefig(path.join(sampledir, f"samples_epoch_{epoch_str}_class_{c}"))
             plt.close()
 
 
