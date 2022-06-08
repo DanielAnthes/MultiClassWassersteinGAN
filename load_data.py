@@ -37,6 +37,18 @@ def batch_by_class(batchsize, data, labels):
 
     return ds
 
+def batch_by_class_tuple(batchsize, data, labels):
+    datasets = []
+    classes = np.unique(labels)
+    for c in classes:
+        data_class = data[labels == c]
+        ds_class = tf.data.Dataset.from_tensor_slices(data_class)
+        ds_class = ds_class.batch(batchsize)
+        ds_class = ds_class.map(lambda x: (x,c))
+        datasets.append(ds_class)
+    ds = tf.data.Dataset.zip(datasets)
+    return ds
+
 
 def load_data_by_class(batchsize):
     (ds_train_im, ds_train_label), (ds_val_im, ds_val_label) = tf.keras.datasets.mnist.load_data()
@@ -48,8 +60,23 @@ def load_data_by_class(batchsize):
 
     ds_train = batch_by_class(batchsize, ds_train_im, ds_train_label)
     ds_val = batch_by_class(batchsize, ds_val_im, ds_val_label)
-
+    
+    ds_train = ds_train.shuffle(60000)
     return ds_train, ds_val
 
+
+def load_data_by_class_tuple(batchsize):
+    (ds_train_im, ds_train_label), (ds_val_im, ds_val_label) = tf.keras.datasets.mnist.load_data()
+    ds_train_im = np.expand_dims(ds_train_im.astype('float32') / 255, 3)
+    ds_val_im = np.expand_dims(ds_val_im.astype('float32') / 255, 3)
+
+    ds_train_label = ds_train_label.astype('int32')
+    ds_val_label = ds_val_label.astype('int32')
+
+    ds_train = batch_by_class_tuple(batchsize, ds_train_im, ds_train_label)
+    ds_val = batch_by_class_tuple(batchsize, ds_val_im, ds_val_label)
+    
+    ds_train = ds_train.shuffle(60000)
+    return ds_train, ds_val
 
 

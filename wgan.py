@@ -7,16 +7,16 @@ import matplotlib.pyplot as plt
 
 from load_data import load_data
 from modules import make_generator_model, make_discriminator_model
-from callbacks import PrettyMetricPrinter
+from callbacks import CustomTensorBoard, PrettyMetricPrinter
 
 tf.random.set_seed(42)
 
 #%%
 
-BATCHSIZE = 512
-EPOCHS = 1000
-NCRIT_UPDATES = 10
-SAMPLEFREQ = 10
+BATCHSIZE = 32
+EPOCHS = 200
+NCRIT_UPDATES = 1
+SAMPLEFREQ = 1
 GP_WEIGHT = 10.
 CT_WEIGHT = 2.
 LIPSCHITZ_CONST = 1.
@@ -30,15 +30,20 @@ ds_train, ds_val = load_data(BATCHSIZE)
 
 #%%
 
+@tf.function
 def wasserstein_loss_gen(y_pred):
     return - tf.reduce_mean(y_pred)
 
 
+@tf.function
 def wasserstein_loss_critic(y_pred, y_real):
     return tf.reduce_mean(y_pred) - tf.reduce_mean(y_real)
 
 
+@tf.function
 def train_step_generator():
+    if not tf.executing_eagerly():
+        print("> TRACING GENERATOR UPDATE")
     # generate fake samples
     noise = tf.random.normal([BATCHSIZE, 100])
     trainable_vars = generator.trainable_variables
@@ -52,7 +57,12 @@ def train_step_generator():
     optim.apply_gradients(zip(grads, trainable_vars))
     return loss
 
+
+@tf.function
 def train_step_critic_gp_perturbed(d_real, nsamples):
+    if not tf.executing_eagerly():
+        print("> TRACING CRITIC UPDATE")
+
     # generate fake samples
     noise = tf.random.normal([nsamples, 100])
     d_fake = generator(noise)
@@ -71,7 +81,7 @@ def train_step_critic_gp_perturbed(d_real, nsamples):
         ws_loss = wasserstein_loss_critic(crit_score_fake, crit_score_real)
         grad_xhat = tape.gradient(crit_score_xhat, xhat)
         grad_penalty = GP_WEIGHT * tf.reduce_mean((tf.norm(tf.reshape(grad_xhat, (nsamples, -1)), axis=1) - LIPSCHITZ_CONST)**2)
-        ct_penalty = CT_WEIGHT * tf.reduce_mean(tf.maximum(0, tf.sqrt(tf.reduce_sum((crit_score_xprime - critic_score_xprimeprime) ** 2, axis=1))))
+        ct_penalty = CT_WEIGHT * tf.reduce_mean(tf.maximum(0., tf.sqrt(tf.reduce_sum((crit_score_xprime - critic_score_xprimeprime) ** 2, axis=1))))
         loss = ws_loss + grad_penalty + ct_penalty
 
     grads = tape.gradient(loss, trainable_vars)
@@ -86,7 +96,8 @@ def train_step_critic_gp_perturbed(d_real, nsamples):
 counter = 0
 # callbacks
 callbacks = [
-             PrettyMetricPrinter(['critic_loss', 'generator_loss', 'wasserstein_critic', 'gradient_penalty', 'ct_penalty'], [])
+             PrettyMetricPrinter(['critic_loss', 'generator_loss', 'wasserstein_critic', 'gradient_penalty', 'ct_penalty'], []),
+             CustomTensorBoard('./logs/wgan')
             ]
 callbacks = tf.keras.callbacks.CallbackList(callbacks, addhistory=True)
 
